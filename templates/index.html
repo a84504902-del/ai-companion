@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Companion - 夏雪</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>AI Companion</h2>
+                <button class="btn-new-chat" onclick="newChat()">+ 新对话</button>
+            </div>
+            <div class="session-list" id="sessionList">
+                <!-- 会话列表 -->
+            </div>
+            <div class="sidebar-footer">
+                <a href="/admin" class="btn-admin">后台管理</a>
+            </div>
+        </aside>
+
+        <!-- 主聊天区 -->
+        <main class="main-content">
+            <div class="chat-header">
+                <h3 id="chatTitle">新对话</h3>
+                <div class="chat-actions">
+                    <select id="llmSelect" class="llm-select">
+                        <option value="deepseek">加载中...</option>
+                    </select>
+                    <button id="ttsBtn" class="btn-tts active" onclick="toggleTTS()" title="语音播报">🔊</button>
+                    <button onclick="clearChat()">清空</button>
+                    <button onclick="exportChat()">导出</button>
+                </div>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <!-- 消息列表 -->
+            </div>
+            <div class="chat-input">
+                <textarea id="messageInput" placeholder="输入消息...（Shift+Enter 换行）" rows="1"></textarea>
+                <button class="btn-send" onclick="sendMessage()">发送</button>
+            </div>
+        </main>
+
+        <!-- 右侧面板 -->
+        <aside class="right-panel" id="rightPanel">
+            <div class="panel-tabs">
+                <button class="tab-btn active" onclick="switchTab('memory')">记忆</button>
+                <button class="tab-btn" onclick="switchTab('people')">人物</button>
+                <button class="tab-btn" onclick="switchTab('relations')">关系</button>
+                <button class="tab-btn" onclick="switchTab('prompt')">提示词</button>
+            </div>
+            <div class="panel-content">
+                <div id="memoryPanel" class="tab-panel active"></div>
+                <div id="peoplePanel" class="tab-panel"></div>
+                <div id="relationsPanel" class="tab-panel"></div>
+                <div id="promptPanel" class="tab-panel">
+                    <div class="prompt-section">
+                        <h4>系统提示词</h4>
+                        <p class="prompt-hint">定义 AI 的角色和行为方式，每个对话独立配置</p>
+                        <textarea id="systemPromptInput" class="prompt-textarea" rows="10" placeholder="例如：你是一个温柔体贴的AI伴侣，名叫夏雪..."></textarea>
+                        <button class="btn-save-prompt" onclick="saveSystemPrompt()">保存提示词</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

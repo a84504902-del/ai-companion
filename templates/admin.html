@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Companion - 后台管理</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- 左侧菜单 -->
+        <aside class="admin-sidebar">
+            <div class="admin-logo">
+                <h2>AI Companion</h2>
+                <span>后台管理</span>
+            </div>
+            <nav class="admin-nav">
+                <a href="#" class="nav-item active" data-page="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span>仪表盘</span>
+                </a>
+                <a href="#" class="nav-item" data-page="llm">
+                    <span class="nav-icon">🤖</span>
+                    <span>LLM 配置</span>
+                </a>
+                <a href="#" class="nav-item" data-page="sessions">
+                    <span class="nav-icon">💬</span>
+                    <span>会话管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="memory">
+                    <span class="nav-icon">🧠</span>
+                    <span>记忆管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="database">
+                    <span class="nav-icon">🗄️</span>
+                    <span>数据库</span>
+                </a>
+                <a href="#" class="nav-item" data-page="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span>系统设置</span>
+                </a>
+            </nav>
+            <div class="admin-footer">
+                <a href="/" class="back-link">← 返回聊天</a>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="admin-main">
+            <!-- 仪表盘 -->
+            <div class="page active" id="page-dashboard">
+                <h1>仪表盘</h1>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="statSessions">0</div>
+                        <div class="stat-label">会话数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statMessages">0</div>
+                        <div class="stat-label">消息数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statMemories">0</div>
+                        <div class="stat-label">记忆数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statPeople">0</div>
+                        <div class="stat-label">人物数</div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <h3>系统信息</h3>
+                    <div class="info-row">
+                        <span>运行状态</span>
+                        <span class="badge badge-green">运行中</span>
+                    </div>
+                    <div class="info-row">
+                        <span>端口</span>
+                        <span>8765</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LLM 配置 -->
+            <div class="page" id="page-llm">
+                <h1>LLM 配置</h1>
+                <p class="page-desc">管理所有 AI 后端服务的配置</p>
+                <div class="section-header">
+                    <h3>所有 LLM</h3>
+                    <button class="btn btn-primary" onclick="showAddLLMModal()">+ 添加</button>
+                </div>
+                <div class="config-list" id="llmList">
+                    <!-- LLM 列表 -->
+                </div>
+            </div>
+
+            <!-- 会话管理 -->
+            <div class="page" id="page-sessions">
+                <h1>会话管理</h1>
+                <p class="page-desc">查看和管理所有聊天会话</p>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>标题</th>
+                                <th>消息数</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessionsTable">
+                            <!-- 会话列表 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 记忆管理 -->
+            <div class="page" id="page-memory">
+                <h1>记忆管理</h1>
+                <p class="page-desc">查看和管理 AI 的记忆</p>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>内容</th>
+                                <th>标签</th>
+                                <th>时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="memoryTable">
+                            <!-- 记忆列表 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 数据库 -->
+            <div class="page" id="page-database">
+                <h1>数据库</h1>
+                <p class="page-desc">数据库信息和维护</p>
+                <div class="info-card">
+                    <h3>数据库信息</h3>
+                    <div class="info-row">
+                        <span>文件路径</span>
+                        <span id="dbFilePath">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span>文件大小</span>
+                        <span id="dbFileSize">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span>表数量</span>
+                        <span id="dbTableCount">-</span>
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="vacuumDatabase()">压缩数据库</button>
+                </div>
+            </div>
+
+            <!-- 系统设置 -->
+            <div class="page" id="page-settings">
+                <h1>系统设置</h1>
+                <p class="page-desc">系统配置和维护</p>
+                <div class="info-card">
+                    <h3>服务器配置</h3>
+                    <div class="info-row">
+                        <span>监听地址</span>
+                        <span>0.0.0.0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>监听端口</span>
+                        <span>8765</span>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <h3>快捷操作</h3>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="window.open('/')">打开聊天页面</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 添加 LLM 弹窗 -->
+    <div class="modal" id="addLLMModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>添加 LLM</h3>
+                <button class="modal-close" onclick="hideAddLLMModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="llmTestId" value="">
+                <div class="form-group">
+                    <label>名称</label>
+                    <input type="text" id="llmName" placeholder="例如：DeepSeek">
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="llmDesc" placeholder="例如：高性能推理模型">
+                </div>
+                <div class="form-group">
+                    <label>API 地址</label>
+                    <input type="text" id="llmBaseUrl" placeholder="例如：https://api.deepseek.com/v1/chat/completions">
+                </div>
+                <div class="form-group">
+                    <label>API Key</label>
+                    <input type="text" id="llmApiKey" placeholder="sk-...">
+                </div>
+                <div class="form-group">
+                    <label>模型名</label>
+                    <input type="text" id="llmModel" placeholder="例如：deepseek-chat">
+                </div>
+                <div class="form-actions">
+                    <button class="btn" onclick="hideAddLLMModal()">取消</button>
+                    <button class="btn" onclick="testLLM()">测试</button>
+                    <button class="btn btn-primary" id="llmSubmitBtn" onclick="submitLLM()">保存</button>
+                </div>
+                <div id="llmTestResult" style="margin-top: 12px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# 敏感配置
+.env
+llm_config.json
+custom_llms.json
+
+# 数据库
+memory.db
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# 音频缓存
+*.mp3
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+Thumbs.db
+.DS_Store
