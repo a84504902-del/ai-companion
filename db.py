@@ -57,6 +57,12 @@ def init_db():
     except Exception:
         conn.execute("ALTER TABLE sessions ADD COLUMN system_prompt TEXT DEFAULT ''")
 
+    # 迁移：添加 title_locked 列（如果不存在）
+    try:
+        conn.execute("SELECT title_locked FROM sessions LIMIT 1")
+    except Exception:
+        conn.execute("ALTER TABLE sessions ADD COLUMN title_locked INTEGER DEFAULT 0")
+
     conn.commit()
     conn.close()
 
@@ -228,6 +234,24 @@ def update_system_prompt(session_id, system_prompt):
     conn.close()
 
 
+def rename_session(session_id, new_title):
+    """重命名会话并锁定标题"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = connect()
+    conn.execute("UPDATE sessions SET title = ?, title_locked = 1, updated = ? WHERE id = ?",
+                 (new_title, timestamp, session_id))
+    conn.commit()
+    conn.close()
+
+
+def is_title_locked(session_id):
+    """检查标题是否已锁定"""
+    conn = connect()
+    row = conn.execute("SELECT title_locked FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    conn.close()
+    return row["title_locked"] if row else False
+
+
 def delete_session(session_id):
     """删除会话"""
     conn = connect()
@@ -327,6 +351,50 @@ def delete_relation(relation_id):
     conn.execute("DELETE FROM relations WHERE id = ?", (relation_id,))
     conn.commit()
     conn.close()
+
+
+def search_messages(query):
+    """搜索所有会话的消息"""
+    conn = connect()
+    results = []
+
+    # 获取所有消息表
+    tables = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'messages_%'"
+    ).fetchall()
+
+    for table in tables:
+        table_name = table["name"]
+        session_id = table_name.replace("messages_", "")
+
+        try:
+            rows = conn.execute(
+                f"SELECT role, content, timestamp FROM [{table_name}] WHERE content LIKE ? ORDER BY timestamp DESC LIMIT 10",
+                (f"%{query}%",)
+            ).fetchall()
+
+            for row in rows:
+                # 获取会话标题
+                session = conn.execute(
+                    "SELECT title FROM sessions WHERE id = ?", (session_id,)
+                ).fetchone()
+                title = session["title"] if session else "未知会话"
+
+                results.append({
+                    "session_id": session_id,
+                    "session_title": title,
+                    "role": row["role"],
+                    "content": row["content"],
+                    "timestamp": row["timestamp"]
+                })
+        except Exception:
+            continue
+
+    conn.close()
+
+    # 按时间倒序排列
+    results.sort(key=lambda x: x["timestamp"], reverse=True)
+    return results
 
 
 def get_stats():

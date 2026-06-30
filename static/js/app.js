@@ -150,6 +150,11 @@ async function sendMessage() {
         } else {
             appendMessage('assistant', data.response, data.audio_url);
 
+            // 显示自动摘要
+            if (data.summary) {
+                appendMessage('assistant', `📝 **对话摘要：** ${data.summary}`);
+            }
+
             // 自动播放 TTS
             if (data.audio_url && ttsEnabled) {
                 playAudio(data.audio_url);
@@ -256,20 +261,29 @@ async function summarizeChat() {
     }
 }
 
+// 重命名会话
+async function renameSession() {
+    const currentTitle = document.getElementById('chatTitle').textContent;
+    const newTitle = prompt('输入新标题:', currentTitle);
+    if (!newTitle || newTitle.trim() === '') return;
+
+    try {
+        await fetch('/api/rename_session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle.trim() })
+        });
+        document.getElementById('chatTitle').textContent = newTitle.trim();
+        loadSessions();
+    } catch (e) {
+        alert('重命名失败: ' + e.message);
+    }
+}
+
 // 导出对话
 async function exportChat() {
-    try {
-        const resp = await fetch('/export_chat');
-        const data = await resp.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `chat_${new Date().toISOString().slice(0,10)}.json`;
-        a.click();
-    } catch (e) {
-        console.error('导出失败:', e);
-    }
+    const format = document.getElementById('exportFormat').value;
+    window.location.href = `/export_chat?format=${format}`;
 }
 
 // 切换面板标签
@@ -284,7 +298,10 @@ function switchTab(tab) {
     if (tab === 'memory') loadMemories();
     if (tab === 'people') loadPeople();
     if (tab === 'relations') loadRelations();
-    if (tab === 'prompt') loadSystemPrompt();
+    if (tab === 'prompt') {
+        loadSystemPrompt();
+        loadTemplates();
+    }
 }
 
 // 加载系统提示词
@@ -493,6 +510,130 @@ async function deleteRelation(id) {
         loadRelations();
     } catch (e) {
         alert('删除失败: ' + e.message);
+    }
+}
+
+// 搜索聊天记录
+async function searchChat() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (!query) return;
+
+    try {
+        const resp = await fetch(`/api/search_chat?q=${encodeURIComponent(query)}`);
+        const data = await resp.json();
+        const panel = document.getElementById('searchResults');
+
+        if (!data.results || data.results.length === 0) {
+            panel.innerHTML = '<p style="color: #555; margin-top: 12px;">未找到相关记录</p>';
+            return;
+        }
+
+        panel.innerHTML = data.results.map(r => `
+            <div class="search-item" onclick="jumpToSession('${r.session_id}')">
+                <div class="search-session">${escapeHtml(r.session_title)}</div>
+                <div class="search-role">${r.role === 'user' ? '用户' : 'AI'}</div>
+                <div class="search-content">${escapeHtml(r.content.substring(0, 100))}${r.content.length > 100 ? '...' : ''}</div>
+                <div class="search-time">${r.timestamp}</div>
+            </div>
+        `).join('');
+    } catch (e) {
+        console.error('搜索失败:', e);
+    }
+}
+
+// 跳转到会话
+async function jumpToSession(sessionId) {
+    try {
+        const resp = await fetch('/switch_chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId })
+        });
+        const data = await resp.json();
+        currentSession = sessionId;
+        renderMessages(data.history);
+        loadSessions();
+    } catch (e) {
+        console.error('跳转失败:', e);
+    }
+}
+
+// 加载模板列表
+async function loadTemplates() {
+    try {
+        const resp = await fetch('/api/templates');
+        const data = await resp.json();
+        const select = document.getElementById('templateSelect');
+        select.innerHTML = '<option value="">选择模板...</option>';
+        if (data.templates) {
+            data.templates.forEach(t => {
+                const option = document.createElement('option');
+                option.value = t.id;
+                option.textContent = t.name;
+                select.appendChild(option);
+            });
+        }
+    } catch (e) {
+        console.error('加载模板失败:', e);
+    }
+}
+
+// 加载模板内容
+async function loadTemplate() {
+    const id = document.getElementById('templateSelect').value;
+    if (!id) return;
+
+    try {
+        const resp = await fetch('/api/templates');
+        const data = await resp.json();
+        const template = data.templates.find(t => t.id === id);
+        if (template) {
+            document.getElementById('templatePrompt').value = template.prompt;
+        }
+    } catch (e) {
+        console.error('加载模板失败:', e);
+    }
+}
+
+// 应用模板到当前会话
+async function useTemplate() {
+    const prompt = document.getElementById('templatePrompt').value.trim();
+    if (!prompt) { alert('请先选择或输入提示词'); return; }
+
+    document.getElementById('systemPromptInput').value = prompt;
+    await saveSystemPrompt();
+    alert('模板已应用到当前会话');
+}
+
+// 显示新建模板弹窗
+function showAddTemplateModal() {
+    document.getElementById('addTemplateModal').style.display = 'flex';
+    document.getElementById('templateName').value = '';
+    document.getElementById('templatePrompt').value = document.getElementById('systemPromptInput').value;
+}
+
+// 隐藏新建模板弹窗
+function hideAddTemplateModal() {
+    document.getElementById('addTemplateModal').style.display = 'none';
+}
+
+// 保存模板
+async function saveTemplate() {
+    const name = document.getElementById('templateName').value.trim();
+    const prompt = document.getElementById('templatePrompt').value.trim();
+    if (!name || !prompt) { alert('请填写名称和提示词'); return; }
+
+    try {
+        await fetch('/api/templates/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, prompt })
+        });
+        hideAddTemplateModal();
+        loadTemplates();
+        alert('模板已保存');
+    } catch (e) {
+        alert('保存失败: ' + e.message);
     }
 }
 

@@ -1,6 +1,7 @@
 """聊天相关路由"""
 import json
 import hashlib
+from datetime import datetime
 from aiohttp import web
 
 import db
@@ -12,6 +13,8 @@ from tts import synthesize
 _chat_sessions = []
 _current_session_id = None
 _conversation_history = []
+_message_count = 0  # 当前会话消息计数
+AUTO_SUMMARY_THRESHOLD = 15  # 自动摘要阈值
 
 
 async def chat_handler(request):
@@ -69,10 +72,21 @@ async def chat_handler(request):
     db.save_message(_current_session_id, "user", text)
     db.save_message(_current_session_id, "assistant", response)
 
-    # 更新会话标题（取首条消息）
+    # 更新消息计数
+    global _message_count
+    _message_count += 2  # user + assistant
+
+    # 更新会话标题（取首条消息，如果标题未锁定）
     if len(_conversation_history) == 2:
-        title = text[:50] + ("..." if len(text) > 50 else "")
-        db.update_session(_current_session_id, title)
+        if not db.is_title_locked(_current_session_id):
+            title = text[:50] + ("..." if len(text) > 50 else "")
+            db.update_session(_current_session_id, title)
+
+    # 自动摘要（每15轮对话）
+    summary = None
+    if _message_count >= AUTO_SUMMARY_THRESHOLD * 2:
+        summary = await _auto_summarize()
+        _message_count = 0  # 重置计数
 
     # 生成 TTS 音频
     audio_url = None
@@ -86,8 +100,43 @@ async def chat_handler(request):
 
     return web.json_response({
         "response": response,
-        "audio_url": audio_url
+        "audio_url": audio_url,
+        "summary": summary
     })
+
+
+async def _auto_summarize():
+    """自动生成聊天摘要"""
+    global _conversation_history, _current_session_id
+
+    if len(_conversation_history) < AUTO_SUMMARY_THRESHOLD * 2:
+        return None
+
+    # 组装对话文本
+    chat_text = ""
+    for msg in _conversation_history[-30:]:  # 最近30条
+        role = "用户" if msg["role"] == "user" else "AI"
+        chat_text += f"{role}: {msg['content'][:200]}\n"  # 截断长消息
+
+    try:
+        from routes.custom_llm import get_llm_chat_func
+        chat_func = get_llm_chat_func("deepseek")  # 用默认 LLM 生成摘要
+
+        if not chat_func:
+            return None
+
+        messages = [
+            {"role": "system", "content": "你是一个摘要助手。请用简洁的中文总结以下对话的主要内容和关键信息，控制在50字以内。"},
+            {"role": "user", "content": chat_text}
+        ]
+        summary = chat_func(messages)
+
+        # 更新会话标题
+        db.update_session(_current_session_id, title=f"摘要: {summary[:30]}")
+
+        return summary
+    except Exception:
+        return None
 
 
 async def history_handler(request):
@@ -141,7 +190,7 @@ async def new_chat_handler(request):
 
 async def switch_chat_handler(request):
     """切换会话"""
-    global _current_session_id, _conversation_history
+    global _current_session_id, _conversation_history, _message_count
 
     try:
         data = await request.json()
@@ -160,6 +209,7 @@ async def switch_chat_handler(request):
     _current_session_id = session_id
     messages = db.load_messages(session_id)
     _conversation_history = [{"role": m["role"], "content": m["content"]} for m in messages]
+    _message_count = len(_conversation_history)  # 恢复消息计数
 
     return web.json_response({
         "session_id": session_id,
@@ -224,10 +274,71 @@ async def search_history_handler(request):
 
 async def export_chat_handler(request):
     """导出聊天记录"""
-    return web.json_response({
-        "session_id": _current_session_id,
-        "messages": _conversation_history
-    })
+    fmt = request.query.get("format", "json")
+    session_id = request.query.get("session_id", _current_session_id)
+
+    # 获取会话信息
+    session = db.get_session(session_id) if session_id else None
+    title = session.get("title", "新对话") if session else "新对话"
+
+    # 获取消息
+    if session_id == _current_session_id:
+        messages = _conversation_history
+    else:
+        db_messages = db.load_messages(session_id)
+        messages = [{"role": m["role"], "content": m["content"]} for m in db_messages]
+
+    if fmt == "markdown":
+        content = f"# {title}\n\n"
+        for msg in messages:
+            role = "**用户**" if msg["role"] == "user" else "**AI**"
+            content += f"### {role}\n\n{msg['content']}\n\n"
+        return web.Response(
+            body=content.encode("utf-8"),
+            content_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename={title}.md"}
+        )
+    elif fmt == "txt":
+        content = f"{title}\n{'='*40}\n\n"
+        for msg in messages:
+            role = "用户" if msg["role"] == "user" else "AI"
+            content += f"[{role}]\n{msg['content']}\n\n"
+        return web.Response(
+            body=content.encode("utf-8"),
+            content_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename={title}.txt"}
+        )
+    else:
+        data = {
+            "session_id": session_id,
+            "title": title,
+            "messages": messages,
+            "export_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        return web.Response(
+            body=json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"),
+            content_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename={title}.json"}
+        )
+
+
+async def rename_session_handler(request):
+    """重命名会话"""
+    global _current_session_id
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "无效的JSON"}, status=400)
+
+    session_id = data.get("session_id", _current_session_id)
+    new_title = data.get("title", "").strip()
+
+    if not new_title:
+        return web.json_response({"error": "标题不能为空"}, status=400)
+
+    db.rename_session(session_id, new_title)
+    return web.json_response({"ok": True})
 
 
 async def update_system_prompt_handler(request):
@@ -253,6 +364,16 @@ async def get_system_prompt_handler(request):
     if session:
         return web.json_response({"system_prompt": session.get("system_prompt", "")})
     return web.json_response({"system_prompt": ""})
+
+
+async def search_chat_handler(request):
+    """搜索聊天记录"""
+    query = request.query.get("q", "").strip()
+    if not query:
+        return web.json_response({"results": []})
+
+    results = db.search_messages(query)
+    return web.json_response({"results": results[:50]})
 
 
 async def summarize_handler(request):

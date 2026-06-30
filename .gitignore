@@ -2,6 +2,7 @@
 .env
 llm_config.json
 custom_llms.json
+prompt_templates.json
 
 # 数据库
 memory.db

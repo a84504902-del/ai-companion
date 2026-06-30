@@ -5,7 +5,7 @@ from aiohttp import web
 
 import db
 import config
-from routes import chat, memory, person, relation, admin, custom_llm
+from routes import chat, memory, person, relation, admin, custom_llm, template
 
 
 async def index_handler(request):
@@ -64,6 +64,8 @@ def create_app():
     app.router.add_post("/api/system_prompt", chat.update_system_prompt_handler)
     app.router.add_get("/api/system_prompt", chat.get_system_prompt_handler)
     app.router.add_get("/api/summarize", chat.summarize_handler)
+    app.router.add_get("/api/search_chat", chat.search_chat_handler)
+    app.router.add_post("/api/rename_session", chat.rename_session_handler)
 
     # 记忆
     app.router.add_get("/memories", memory.list_memories)
@@ -95,6 +97,12 @@ def create_app():
     app.router.add_post("/api/llms/update", custom_llm.update_llm)
     app.router.add_post("/api/llms/delete", custom_llm.delete_llm)
     app.router.add_post("/api/llms/test", custom_llm.test_llm)
+
+    # 提示词模板
+    app.router.add_get("/api/templates", template.list_templates)
+    app.router.add_post("/api/templates/add", template.add_template)
+    app.router.add_post("/api/templates/update", template.update_template)
+    app.router.add_post("/api/templates/delete", template.delete_template)
 
     # 静态文件
     app.router.add_static("/static", os.path.join(config.BASE_DIR, "static"))
