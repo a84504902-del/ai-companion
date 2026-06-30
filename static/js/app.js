@@ -106,12 +106,23 @@ async function loadHistory() {
 // 渲染消息
 function renderMessages(history) {
     const container = document.getElementById('chatMessages');
-    container.innerHTML = history.map(msg => `
-        <div class="message ${msg.role}">
-            <div class="message-content">${escapeHtml(msg.content)}</div>
-        </div>
-    `).join('');
+    container.innerHTML = history.map(msg => {
+        const content = msg.role === 'assistant' ? renderMarkdown(msg.content) : escapeHtml(msg.content);
+        return `<div class="message ${msg.role}"><div class="message-content">${content}</div></div>`;
+    }).join('');
     container.scrollTop = container.scrollHeight;
+}
+
+// Markdown 渲染
+function renderMarkdown(text) {
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+        return marked.parse(text);
+    }
+    return escapeHtml(text).replace(/\n/g, '<br>');
 }
 
 // 发送消息
@@ -157,12 +168,11 @@ function appendMessage(role, content, audioUrl) {
 
     let audioBtn = '';
     if (role === 'assistant' && audioUrl) {
-        audioBtn = `<button class="btn-audio" onclick="playAudio('${audioUrl}')">🔊 播放</button>`;
+        audioBtn = `<button class="btn-audio" onclick="playAudio('${audioUrl}')">🔊</button>`;
     }
 
-    div.innerHTML = `
-        <div class="message-content">${escapeHtml(content)}${audioBtn}</div>
-    `;
+    const renderedContent = role === 'assistant' ? renderMarkdown(content) : escapeHtml(content);
+    div.innerHTML = `<div class="message-content">${renderedContent}${audioBtn}</div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }
@@ -226,6 +236,23 @@ async function clearChat() {
         document.getElementById('chatMessages').innerHTML = '';
     } catch (e) {
         console.error('清空失败:', e);
+    }
+}
+
+// 生成摘要
+async function summarizeChat() {
+    const mode = document.getElementById('llmSelect').value;
+    try {
+        appendMessage('assistant', '正在生成摘要...');
+        const resp = await fetch(`/api/summarize?mode=${mode}`);
+        const data = await resp.json();
+        if (data.summary) {
+            appendMessage('assistant', `📝 **对话摘要：**\n\n${data.summary}`);
+        } else {
+            appendMessage('assistant', `摘要生成失败: ${data.error}`);
+        }
+    } catch (e) {
+        appendMessage('assistant', `摘要生成失败: ${e.message}`);
     }
 }
 

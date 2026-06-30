@@ -255,5 +255,42 @@ async def get_system_prompt_handler(request):
     return web.json_response({"system_prompt": ""})
 
 
+async def summarize_handler(request):
+    """生成聊天摘要"""
+    global _conversation_history, _current_session_id
+
+    if not _conversation_history:
+        return web.json_response({"summary": "暂无聊天内容"})
+
+    # 组装对话文本
+    chat_text = ""
+    for msg in _conversation_history[-20:]:  # 最近20条
+        role = "用户" if msg["role"] == "user" else "AI"
+        chat_text += f"{role}: {msg['content']}\n"
+
+    # 调用 LLM 生成摘要
+    try:
+        from routes.custom_llm import get_llm_chat_func
+        session = db.get_session(_current_session_id)
+        llm_mode = request.query.get("mode", "deepseek")
+        chat_func = get_llm_chat_func(llm_mode)
+
+        if not chat_func:
+            return web.json_response({"summary": "LLM 未配置，无法生成摘要"})
+
+        messages = [
+            {"role": "system", "content": "你是一个摘要助手。请用简洁的中文总结以下对话的主要内容，包括：1.对话主题 2.关键信息 3.用户的需求或关注点。摘要控制在100字以内。"},
+            {"role": "user", "content": chat_text}
+        ]
+        summary = chat_func(messages)
+
+        # 保存摘要到会话
+        db.update_session(_current_session_id, title=f"摘要: {summary[:30]}")
+
+        return web.json_response({"summary": summary})
+    except Exception as e:
+        return web.json_response({"error": f"生成摘要失败: {e}"}, status=500)
+
+
 # 导入 asyncio
 import asyncio

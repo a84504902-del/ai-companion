@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Companion - 夏雪</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -31,6 +32,7 @@
                         <option value="deepseek">加载中...</option>
                     </select>
                     <button id="ttsBtn" class="btn-tts active" onclick="toggleTTS()" title="语音播报">🔊</button>
+                    <button onclick="summarizeChat()" title="生成摘要">📝 摘要</button>
                     <button onclick="clearChat()">清空</button>
                     <button onclick="exportChat()">导出</button>
                 </div>

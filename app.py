@@ -63,6 +63,7 @@ def create_app():
     app.router.add_get("/export_chat", chat.export_chat_handler)
     app.router.add_post("/api/system_prompt", chat.update_system_prompt_handler)
     app.router.add_get("/api/system_prompt", chat.get_system_prompt_handler)
+    app.router.add_get("/api/summarize", chat.summarize_handler)
 
     # 记忆
     app.router.add_get("/memories", memory.list_memories)
