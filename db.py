@@ -63,6 +63,17 @@ def init_db():
     except Exception:
         conn.execute("ALTER TABLE sessions ADD COLUMN title_locked INTEGER DEFAULT 0")
 
+    # 向量嵌入表
+    c.execute("""CREATE TABLE IF NOT EXISTS memory_embeddings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        memory_id INTEGER NOT NULL,
+        embedding TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
+    )""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_mem_emb_mid ON memory_embeddings(memory_id)")
+
     conn.commit()
     conn.close()
 
@@ -134,11 +145,51 @@ def get_message_count(session_id):
 
 # 记忆操作
 def save_memory(content, tags="", session_id=""):
-    """保存记忆"""
+    """保存记忆，返回 memory_id"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = connect()
-    conn.execute("INSERT INTO memories (content, timestamp, tags, session_id) VALUES (?, ?, ?, ?)",
+    cur = conn.execute("INSERT INTO memories (content, timestamp, tags, session_id) VALUES (?, ?, ?, ?)",
                  (content, timestamp, tags, session_id))
+    memory_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return memory_id
+
+
+def save_memory_embedding(memory_id, embedding_json, content):
+    """保存记忆向量"""
+    conn = connect()
+    conn.execute("INSERT INTO memory_embeddings (memory_id, embedding, content) VALUES (?, ?, ?)",
+                 (memory_id, embedding_json, content))
+    conn.commit()
+    conn.close()
+
+
+def get_all_memory_embeddings():
+    """获取所有记忆向量（启动时预加载）"""
+    conn = connect()
+    rows = conn.execute("SELECT me.id, me.memory_id, me.embedding, me.content, m.tags "
+                        "FROM memory_embeddings me "
+                        "JOIN memories m ON me.memory_id = m.id").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_memory_by_ids(ids):
+    """批量获取记忆"""
+    if not ids:
+        return []
+    conn = connect()
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(f"SELECT id, content, timestamp, tags FROM memories WHERE id IN ({placeholders})", ids).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_memory_embedding_by_memory_id(memory_id):
+    """删除记忆对应的向量"""
+    conn = connect()
+    conn.execute("DELETE FROM memory_embeddings WHERE memory_id = ?", (memory_id,))
     conn.commit()
     conn.close()
 
@@ -167,8 +218,9 @@ def load_memories(tag=None, session_id=None):
 
 
 def delete_memory(memory_id):
-    """删除记忆"""
+    """删除记忆及其向量"""
     conn = connect()
+    conn.execute("DELETE FROM memory_embeddings WHERE memory_id = ?", (memory_id,))
     conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
     conn.commit()
     conn.close()

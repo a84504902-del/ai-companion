@@ -1,12 +1,15 @@
 """聊天相关路由"""
 import json
 import hashlib
+import asyncio
 from datetime import datetime
 from aiohttp import web
 
 import db
 import llm
 from tts import synthesize
+import memory_retriever
+from routes.custom_llm import get_llm_chat_func
 
 
 # 内存中的会话状态
@@ -35,15 +38,17 @@ async def chat_handler(request):
     # 处理保存记忆指令
     if text.startswith("保存记忆：") or text.startswith("保存记忆:"):
         memory_content = text.split("：", 1)[-1] if "：" in text else text.split(":", 1)[-1]
-        db.save_memory(memory_content.strip(), session_id=_current_session_id)
+        memory_retriever.store_memory_with_embedding(
+            memory_content.strip(), session_id=_current_session_id
+        )
         return web.json_response({"response": "已保存记忆", "audio_url": None})
 
     # 获取会话的系统提示词
     session = db.get_session(_current_session_id)
     system_prompt = session.get("system_prompt", "") if session else ""
 
-    # 获取记忆和关系文本
-    memory_text = ""
+    # 获取关系文本
+    relation_text = ""
     relations = db.get_relations(_current_session_id)
     if relations:
         people = db.get_people(_current_session_id)
@@ -53,7 +58,24 @@ async def chat_handler(request):
             name_a = people_map.get(r["person_a_id"], "未知")
             name_b = people_map.get(r["person_b_id"], "未知")
             relation_lines.append(f"{name_a} 是 {name_b} 的{r['relation_type']}")
-        memory_text = "\n".join(relation_lines)
+        relation_text = "\n".join(relation_lines)
+
+    # 语义检索相关记忆
+    retrieved_memory = ""
+    try:
+        retrieved_memory = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: memory_retriever.build_memory_context(text)
+        )
+    except Exception as e:
+        print(f"[chat] 记忆检索失败: {e}")
+
+    # 合并记忆文本（检索结果 + 关系）
+    memory_text = retrieved_memory
+    if relation_text:
+        if memory_text:
+            memory_text += "\n" + relation_text
+        else:
+            memory_text = relation_text
 
     # 调用 LLM
     try:
@@ -64,6 +86,16 @@ async def chat_handler(request):
         )
     except Exception as e:
         return web.json_response({"error": f"LLM 调用失败: {e}"}, status=500)
+
+    # 后台自动提取事实并存储（不阻塞响应）
+    chat_func = get_llm_chat_func(mode)
+    if chat_func:
+        asyncio.get_event_loop().run_in_executor(
+            None, lambda: memory_retriever.auto_extract_and_store(
+                text, response, chat_func,
+                session_id=_current_session_id
+            )
+        )
 
     # 保存消息
     _conversation_history.append({"role": "user", "content": text})

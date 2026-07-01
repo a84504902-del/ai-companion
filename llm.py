@@ -2,6 +2,18 @@
 from routes.custom_llm import get_llm_chat_func
 
 
+def call_llm(messages, mode="deepseek"):
+    """直接调用 LLM（传入完整 messages 数组）"""
+    chat_func = get_llm_chat_func(mode)
+    if not chat_func:
+        return None
+    try:
+        return chat_func(messages)
+    except Exception as e:
+        print(f"[llm] call_llm 失败: {e}")
+        return None
+
+
 def chat(text, mode="deepseek", history=None, system_prompt=None, memory_text="", relation_text=""):
     """统一聊天接口"""
     from config import ENV

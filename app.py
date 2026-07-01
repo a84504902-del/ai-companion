@@ -1,10 +1,13 @@
 """AI Companion - 主应用入口"""
 import os
 import asyncio
+import threading
 from aiohttp import web
 
 import db
 import config
+import embedding
+import memory_retriever
 from routes import chat, memory, person, relation, admin, custom_llm, template
 
 
@@ -110,6 +113,18 @@ def create_app():
     return app
 
 
+def _init_embedding_background():
+    """后台初始化嵌入模型和预加载向量缓存"""
+    try:
+        memory_retriever.preload_cache()
+        if not embedding.is_ready():
+            embedding.load_model()
+            # 预加载后重新构建缓存（如果有新记忆需要向量化）
+            memory_retriever.preload_cache()
+    except Exception as e:
+        print(f"[app] 嵌入初始化失败: {e}")
+
+
 def main():
     """启动应用"""
     # 初始化数据库
@@ -128,6 +143,9 @@ def main():
     print(f"AI Companion 启动中...")
     print(f"访问地址: http://localhost:{config.PORT}")
     print(f"数据库: {config.DB_PATH}")
+
+    # 后台初始化嵌入模型（不阻塞启动）
+    threading.Thread(target=_init_embedding_background, daemon=True).start()
 
     app = create_app()
     web.run_app(app, host=config.HOST, port=config.PORT)
