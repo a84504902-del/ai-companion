@@ -4,7 +4,7 @@ import db
 import embedding
 
 
-# 内存中的向量缓存: [{id, memory_id, embedding, content, tags}]
+# 内存中的向量缓存: [{id, memory_id, embedding, content, tags, session_id}]
 _vector_cache = []
 _cache_loaded = False
 
@@ -25,7 +25,8 @@ def preload_cache():
                     "memory_id": r["memory_id"],
                     "embedding": vec,
                     "content": r["content"],
-                    "tags": r["tags"] or ""
+                    "tags": r["tags"] or "",
+                    "session_id": r["session_id"] or ""
                 })
         _cache_loaded = True
         print(f"[retriever] 向量缓存预加载完成: {len(_vector_cache)} 条")
@@ -34,7 +35,7 @@ def preload_cache():
         _cache_loaded = True
 
 
-def add_to_cache(memory_id, embedding_vec, content, tags=""):
+def add_to_cache(memory_id, embedding_vec, content, tags="", session_id=""):
     """新增向量到缓存"""
     global _vector_cache
     if embedding_vec:
@@ -43,7 +44,8 @@ def add_to_cache(memory_id, embedding_vec, content, tags=""):
             "memory_id": memory_id,
             "embedding": embedding_vec,
             "content": content,
-            "tags": tags
+            "tags": tags,
+            "session_id": session_id
         })
 
 
@@ -53,8 +55,8 @@ def remove_from_cache(memory_id):
     _vector_cache = [v for v in _vector_cache if v["memory_id"] != memory_id]
 
 
-def retrieve_relevant_memories(query, top_k=5, min_score=0.3):
-    """语义检索：返回与 query 最相关的 top_k 条记忆"""
+def retrieve_relevant_memories(query, session_id="", top_k=5, min_score=0.3):
+    """语义检索：返回当前会话中与 query 最相关的 top_k 条记忆"""
     if not _vector_cache:
         return []
 
@@ -62,8 +64,14 @@ def retrieve_relevant_memories(query, top_k=5, min_score=0.3):
     if not query_vec:
         return []
 
+    # 按 session_id 过滤：只检索当前会话的记忆 + 无 session_id 的全局记忆
+    candidates = [
+        v for v in _vector_cache
+        if v["session_id"] == session_id or v["session_id"] == ""
+    ]
+
     scored = []
-    for item in _vector_cache:
+    for item in candidates:
         score = embedding.cosine_similarity(query_vec, item["embedding"])
         if score >= min_score:
             scored.append({
@@ -77,9 +85,9 @@ def retrieve_relevant_memories(query, top_k=5, min_score=0.3):
     return scored[:top_k]
 
 
-def build_memory_context(query, top_k=5):
-    """构建注入系统提示的记忆文本"""
-    memories = retrieve_relevant_memories(query, top_k)
+def build_memory_context(query, session_id="", top_k=5):
+    """构建注入系统提示的记忆文本（按会话隔离）"""
+    memories = retrieve_relevant_memories(query, session_id, top_k)
     if not memories:
         return ""
 
@@ -99,8 +107,8 @@ def store_memory_with_embedding(content, tags="", session_id=""):
     if vec:
         emb_json = embedding.vector_to_json(vec)
         db.save_memory_embedding(memory_id, emb_json, content)
-        add_to_cache(memory_id, vec, content, tags)
-        print(f"[retriever] 记忆已存储+向量化: id={memory_id}, content={content[:30]}...")
+        add_to_cache(memory_id, vec, content, tags, session_id)
+        print(f"[retriever] 记忆已存储+向量化: id={memory_id}, session={session_id[:20]}, content={content[:30]}...")
 
     return memory_id
 

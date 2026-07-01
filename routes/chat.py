@@ -60,11 +60,11 @@ async def chat_handler(request):
             relation_lines.append(f"{name_a} 是 {name_b} 的{r['relation_type']}")
         relation_text = "\n".join(relation_lines)
 
-    # 语义检索相关记忆
+    # 语义检索相关记忆（按会话隔离）
     retrieved_memory = ""
     try:
         retrieved_memory = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: memory_retriever.build_memory_context(text)
+            None, lambda: memory_retriever.build_memory_context(text, session_id=_current_session_id)
         )
     except Exception as e:
         print(f"[chat] 记忆检索失败: {e}")
@@ -295,12 +295,13 @@ async def delete_session_handler(request):
 
 
 async def search_history_handler(request):
-    """搜索历史消息"""
+    """搜索历史消息（按会话隔离）"""
     query = request.query.get("q", "")
     if not query:
         return web.json_response({"results": []})
 
-    results = db.search_messages(query)
+    session_id = request.query.get("session_id", _current_session_id)
+    results = db.search_messages(query, session_id=session_id)
     return web.json_response({"results": results[:50]})
 
 

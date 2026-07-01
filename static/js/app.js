@@ -2,6 +2,7 @@
 
 // 状态
 let currentSession = null;
+let currentAudio = null;
 let sessions = [];
 let ttsEnabled = true;
 
@@ -171,21 +172,38 @@ function appendMessage(role, content, audioUrl) {
     const div = document.createElement('div');
     div.className = `message ${role}`;
 
-    let audioBtn = '';
+    let audioBtns = '';
     if (role === 'assistant' && audioUrl) {
-        audioBtn = `<button class="btn-audio" onclick="playAudio('${audioUrl}')">🔊</button>`;
+        audioBtns = `
+            <button class="btn-audio" onclick="playAudio('${audioUrl}')" title="重播">🔊</button>
+            <button class="btn-audio btn-stop" onclick="stopAudio()" title="停止">⏹</button>
+        `;
     }
 
     const renderedContent = role === 'assistant' ? renderMarkdown(content) : escapeHtml(content);
-    div.innerHTML = `<div class="message-content">${renderedContent}${audioBtn}</div>`;
+    div.innerHTML = `<div class="message-content">${renderedContent}<div class="audio-btns">${audioBtns}</div></div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }
 
 // 播放音频
 function playAudio(url) {
-    const audio = new Audio(url);
+    stopAudio();
+    // 加时间戳防止浏览器缓存旧音频
+    const bustUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+    const audio = new Audio(bustUrl);
+    currentAudio = audio;
     audio.play().catch(e => console.log('播放失败:', e));
+    audio.onended = () => { currentAudio = null; };
+}
+
+// 停止音频
+function stopAudio() {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        currentAudio = null;
+    }
 }
 
 // 新建对话
@@ -330,10 +348,11 @@ async function saveSystemPrompt() {
     }
 }
 
-// 加载记忆
+// 加载记忆（按会话隔离）
 async function loadMemories() {
     try {
-        const resp = await fetch('/memories');
+        const url = currentSession ? `/memories?session_id=${currentSession}` : '/memories';
+        const resp = await fetch(url);
         const data = await resp.json();
         const panel = document.getElementById('memoryPanel');
         if (!data.memories || data.memories.length === 0) {

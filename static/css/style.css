@@ -335,9 +335,15 @@ body {
     font-style: italic;
 }
 
+.audio-btns {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
 .btn-audio {
     display: inline-block;
-    margin-left: 8px;
     padding: 4px 10px;
     background: var(--bg-hover);
     color: var(--text-secondary);
@@ -349,6 +355,15 @@ body {
 
 .btn-audio:hover {
     background: var(--bg-active);
+}
+
+.btn-stop {
+    background: rgba(220, 50, 50, 0.15);
+    color: #dc3232;
+}
+
+.btn-stop:hover {
+    background: rgba(220, 50, 50, 0.3);
 }
 
 /* 输入区域 */

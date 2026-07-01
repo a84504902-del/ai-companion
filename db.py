@@ -166,9 +166,9 @@ def save_memory_embedding(memory_id, embedding_json, content):
 
 
 def get_all_memory_embeddings():
-    """获取所有记忆向量（启动时预加载）"""
+    """获取所有记忆向量（启动时预加载，含 session_id）"""
     conn = connect()
-    rows = conn.execute("SELECT me.id, me.memory_id, me.embedding, me.content, m.tags "
+    rows = conn.execute("SELECT me.id, me.memory_id, me.embedding, me.content, m.tags, m.session_id "
                         "FROM memory_embeddings me "
                         "JOIN memories m ON me.memory_id = m.id").fetchall()
     conn.close()
@@ -405,33 +405,21 @@ def delete_relation(relation_id):
     conn.close()
 
 
-def search_messages(query):
-    """搜索所有会话的消息"""
+def search_messages(query, session_id=None):
+    """搜索消息（可按会话隔离）"""
     conn = connect()
     results = []
 
-    # 获取所有消息表
-    tables = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'messages_%'"
-    ).fetchall()
-
-    for table in tables:
-        table_name = table["name"]
-        session_id = table_name.replace("messages_", "")
-
+    if session_id:
+        table_name = f"messages_{session_id}"
         try:
             rows = conn.execute(
-                f"SELECT role, content, timestamp FROM [{table_name}] WHERE content LIKE ? ORDER BY timestamp DESC LIMIT 10",
+                f"SELECT role, content, timestamp FROM [{table_name}] WHERE content LIKE ? ORDER BY timestamp DESC LIMIT 20",
                 (f"%{query}%",)
             ).fetchall()
-
+            session = conn.execute("SELECT title FROM sessions WHERE id = ?", (session_id,)).fetchone()
+            title = session["title"] if session else "未知会话"
             for row in rows:
-                # 获取会话标题
-                session = conn.execute(
-                    "SELECT title FROM sessions WHERE id = ?", (session_id,)
-                ).fetchone()
-                title = session["title"] if session else "未知会话"
-
                 results.append({
                     "session_id": session_id,
                     "session_title": title,
@@ -440,11 +428,33 @@ def search_messages(query):
                     "timestamp": row["timestamp"]
                 })
         except Exception:
-            continue
+            pass
+    else:
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'messages_%'"
+        ).fetchall()
+        for table in tables:
+            tname = table["name"]
+            sid = tname.replace("messages_", "")
+            try:
+                rows = conn.execute(
+                    f"SELECT role, content, timestamp FROM [{tname}] WHERE content LIKE ? ORDER BY timestamp DESC LIMIT 10",
+                    (f"%{query}%",)
+                ).fetchall()
+                session = conn.execute("SELECT title FROM sessions WHERE id = ?", (sid,)).fetchone()
+                title = session["title"] if session else "未知会话"
+                for row in rows:
+                    results.append({
+                        "session_id": sid,
+                        "session_title": title,
+                        "role": row["role"],
+                        "content": row["content"],
+                        "timestamp": row["timestamp"]
+                    })
+            except Exception:
+                continue
 
     conn.close()
-
-    # 按时间倒序排列
     results.sort(key=lambda x: x["timestamp"], reverse=True)
     return results
 
